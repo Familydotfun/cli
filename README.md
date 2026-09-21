@@ -6,7 +6,9 @@ run inside Family via the `@familydotfun/sdk` iframe bridge.
 ## Install
 
 ```sh
-# from the repo (recommended until npm publish)
+npm install -g @familydotfun/cli
+
+# or track main directly from the repo
 npm install -g github:Familydotfun/cli
 
 # or from a local checkout of the repo
@@ -16,8 +18,7 @@ npm i -g ./packages/cli
 npx -p github:Familydotfun/cli family help
 ```
 
-Requires Node.js >= 18. The only dependency is [esbuild](https://esbuild.github.io/).
-The CLI lives in the SDK repo: https://github.com/Familydotfun/sdk (`packages/cli`).
+Requires Node.js >= 18. The only runtime dependency is [esbuild](https://esbuild.github.io/).
 
 ## Quickstart
 
