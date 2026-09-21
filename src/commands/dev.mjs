@@ -250,6 +250,21 @@ function renderHostPage({ appUrl, shareBps }) {
   summary { cursor: pointer; color: #9a9ab5; }
   pre { margin: 6px 0 0; padding: 8px; background: #0f0f16; border: 1px solid #2a2a3a; border-radius: 4px; max-height: 180px; overflow: auto; }
   #app { flex: 1 1 auto; width: 100%; border: 0; background: #fff; }
+  #chromehead { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #16161f; border-bottom: 1px solid #2a2a3a; position: relative; }
+  #chromehead[hidden] { display: none; }
+  #chromehead .chromehead-text { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+  #chrometitle { color: #e6e6ef; font-size: 13px; }
+  #chrometitle[hidden], #chromesubtitle[hidden], #chromeback[hidden] { display: none; }
+  #chromesubtitle { color: #9a9ab5; font-size: 11px; }
+  #chromeprogressrow { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: #0f0f16; }
+  #chromeprogressrow[hidden] { display: none; }
+  #chromeprogress { height: 100%; background: #A78BFA; transition: width .2s; }
+  #chromefoot { flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; background: #16161f; border-top: 1px solid #2a2a3a; }
+  #chromefoot[hidden] { display: none; }
+  #chromemain { background: #A78BFA; color: #12121a; border: none; border-radius: 8px; padding: 10px; font: inherit; font-weight: 700; cursor: pointer; }
+  #chromesecondary { background: #26263a; color: #e6e6ef; border: 1px solid #3a3a55; border-radius: 8px; padding: 10px; font: inherit; cursor: pointer; }
+  #chromemain[hidden], #chromesecondary[hidden] { display: none; }
+  #chromemain:disabled, #chromesecondary:disabled { opacity: .5; cursor: default; }
   #toast { position: fixed; right: 16px; bottom: 16px; padding: 10px 14px; border-radius: 6px; background: #26263a; color: #fff; border: 1px solid #3a3a55; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 340px; }
   #toast.show { opacity: 1; }
   #toast.success { background: #14532d; }
@@ -271,7 +286,19 @@ function renderHostPage({ appUrl, shareBps }) {
     <pre id="storejson">{}</pre>
   </details>
 </div>
+<div id="chromehead" hidden>
+  <button id="chromeback" type="button" hidden>&larr;</button>
+  <div class="chromehead-text">
+    <strong id="chrometitle" hidden></strong>
+    <span id="chromesubtitle" hidden></span>
+  </div>
+  <div id="chromeprogressrow" hidden><div id="chromeprogress"></div></div>
+</div>
 <iframe id="app" title="Family app" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"></iframe>
+<div id="chromefoot" hidden>
+  <button id="chromesecondary" type="button" hidden></button>
+  <button id="chromemain" type="button" hidden></button>
+</div>
 <div id="toast"></div>
 <script>
 (function () {
@@ -292,6 +319,102 @@ function renderHostPage({ appUrl, shareBps }) {
   var askCharge = document.getElementById("askcharge");
   var toastTimer = null;
   var store = new Map();
+
+  // --- chrome (host-rendered header / action buttons) ---
+  var chromeHead = document.getElementById("chromehead");
+  var chromeBack = document.getElementById("chromeback");
+  var chromeTitle = document.getElementById("chrometitle");
+  var chromeSubtitle = document.getElementById("chromesubtitle");
+  var chromeProgressRow = document.getElementById("chromeprogressrow");
+  var chromeProgress = document.getElementById("chromeprogress");
+  var chromeFoot = document.getElementById("chromefoot");
+  var chromeMain = document.getElementById("chromemain");
+  var chromeSecondary = document.getElementById("chromesecondary");
+  var chromeState = {
+    header: {},
+    back: false,
+    main: { text: "", isVisible: false, isActive: true, isProgressVisible: false },
+    secondary: { text: "", isVisible: false, isActive: true, isProgressVisible: false },
+  };
+
+  function drawChromeButton(el, st) {
+    el.hidden = !st.isVisible;
+    el.disabled = !st.isActive || st.isProgressVisible;
+    el.textContent = st.isProgressVisible ? "Working…" : st.text;
+  }
+
+  function renderChrome() {
+    var h = chromeState.header;
+    var headVisible =
+      chromeState.back || h.title || h.subtitle || typeof h.progress === "number";
+    chromeHead.hidden = !headVisible;
+    chromeBack.hidden = !chromeState.back;
+    chromeTitle.hidden = !h.title;
+    chromeTitle.textContent = h.title || "";
+    chromeSubtitle.hidden = !h.subtitle;
+    chromeSubtitle.textContent = h.subtitle || "";
+    var hasProgress = typeof h.progress === "number";
+    chromeProgressRow.hidden = !hasProgress;
+    chromeProgress.style.width = Math.round((h.progress || 0) * 100) + "%";
+
+    chromeFoot.hidden = !(chromeState.main.isVisible || chromeState.secondary.isVisible);
+    drawChromeButton(chromeMain, chromeState.main);
+    drawChromeButton(chromeSecondary, chromeState.secondary);
+  }
+
+  function pushChromeEvent(event) {
+    iframe.contentWindow.postMessage(
+      { namespace: "family-sdk", type: "FAMILY:EVENT", id: "evt_" + Date.now(), payload: { event: event } },
+      "*"
+    );
+  }
+
+  chromeMain.addEventListener("click", function () { pushChromeEvent("mainButtonClicked"); });
+  chromeSecondary.addEventListener("click", function () { pushChromeEvent("secondaryButtonClicked"); });
+  chromeBack.addEventListener("click", function () { pushChromeEvent("backButtonClicked"); });
+
+  // Handles every chrome.* method; returns undefined when the method is not
+  // part of the chrome namespace so route() can fall through.
+  function routeChrome(method, args) {
+    if (method === "chrome.ready") return { ok: true };
+    if (method === "chrome.close") { toast("App requested close", "info"); return { ok: true }; }
+    if (method === "chrome.theme.get") {
+      return {
+        colorScheme: "dark", bgColor: "#0b0b10", textColor: "#e6e6ef",
+        hintColor: "#9a9ab5", buttonColor: "#A78BFA", buttonTextColor: "#ffffff",
+      };
+    }
+    if (method === "chrome.header.setParams") {
+      chromeState.header = Object.assign({}, chromeState.header, args[0] || {});
+      renderChrome();
+      return { ok: true };
+    }
+    if (method === "chrome.backButton.show") { chromeState.back = true; renderChrome(); return { ok: true }; }
+    if (method === "chrome.backButton.hide") { chromeState.back = false; renderChrome(); return { ok: true }; }
+    if (method.indexOf("chrome.haptic.") === 0) return { ok: true };
+    var slot = null;
+    var action = null;
+    ["chrome.mainButton", "chrome.secondaryButton"].forEach(function (prefix) {
+      if (method.indexOf(prefix + ".") === 0) {
+        slot = prefix === "chrome.mainButton" ? "main" : "secondary";
+        action = method.slice(prefix.length + 1);
+      }
+    });
+    if (!slot || !action) return undefined;
+    var btn = chromeState[slot];
+    switch (action) {
+      case "setParams": Object.assign(btn, args[0] || {}); break;
+      case "show": btn.isVisible = true; break;
+      case "hide": btn.isVisible = false; break;
+      case "enable": btn.isActive = true; break;
+      case "disable": btn.isActive = false; break;
+      case "showProgress": btn.isProgressVisible = true; break;
+      case "hideProgress": btn.isProgressVisible = false; break;
+      default: return undefined;
+    }
+    renderChrome();
+    return { ok: true };
+  }
 
   walletInput.value = DEFAULT_WALLET;
   iframe.src = APP_URL;
@@ -388,6 +511,8 @@ function renderHostPage({ appUrl, shareBps }) {
   }
 
   function route(method, args) {
+    var chromeResult = routeChrome(method, args);
+    if (chromeResult !== undefined) return chromeResult;
     switch (method) {
       case "init":
         return {
@@ -465,6 +590,7 @@ function renderHostPage({ appUrl, shareBps }) {
   });
 
   refreshStore();
+  renderChrome();
 })();
 </script>
 </body>
