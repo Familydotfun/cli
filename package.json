@@ -1,0 +1,28 @@
+{
+  "name": "@familydotfun/cli",
+  "version": "0.1.0",
+  "description": "Family developer CLI — scaffold, run, build, and ship Family apps and modules.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "family": "./bin/family.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "keywords": [
+    "family",
+    "familydotfun",
+    "cli",
+    "devtools",
+    "web3"
+  ],
+  "dependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
